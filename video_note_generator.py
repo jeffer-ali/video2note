@@ -61,7 +61,7 @@ ssl._create_default_https_context = ssl._create_unverified_context
 
 # OpenRouter configuration
 openrouter_api_key = os.getenv('OPENROUTER_API_KEY')
-openrouter_app_name = os.getenv('OPENROUTER_APP_NAME', 'video_note_generator')
+openrouter_app_name = os.getenv('OPENROUTER_APP_NAME', 'video-note')
 openrouter_http_referer = os.getenv('OPENROUTER_HTTP_REFERER', 'https://github.com')
 openrouter_available = False
 
@@ -76,7 +76,8 @@ client = openai.OpenAI(
 )
 
 # 选择要使用的模型
-AI_MODEL = "google/gemini-pro"  # 使用 Gemini Pro 模型
+# AI_MODEL = "google/gemini-pro"  # 使用 Gemini Pro 模型
+AI_MODEL = "deepseek/deepseek-chat-v3-0324:free"
 
 # Test OpenRouter connection
 if openrouter_api_key:
@@ -1088,3 +1089,86 @@ if __name__ == '__main__':
         except Exception as e:
             print(f"⚠️ 处理URL时出错：{str(e)}")
             sys.exit(1)
+
+def generate_xhs_note_from_url(url: str) -> str:
+    """
+    输入视频url，直接返回小红书文案字符串
+    """
+    generator = VideoNoteGenerator()
+    # 下载并转录
+    temp_dir = os.path.join(generator.output_dir, 'temp_api')
+    os.makedirs(temp_dir, exist_ok=True)
+    try:
+        result = generator._download_video(url, temp_dir)
+        if not result:
+            return "视频下载失败"
+        audio_path, video_info = result
+        if not audio_path or not video_info:
+            return "视频下载失败"
+        transcript = generator._transcribe_audio(audio_path)
+        if not transcript:
+            return "音频转录失败"
+        organized_content = generator._organize_long_content(transcript, int(video_info['duration']))
+        xhs_content, titles, tags, images = generator.convert_to_xiaohongshu(organized_content)
+        return xhs_content
+    finally:
+        if os.path.exists(temp_dir):
+            shutil.rmtree(temp_dir)
+
+def generate_xhs_note_from_audio(url: str) -> str:
+    """
+    输入音频url，直接返回小红书文案的markdown字符串
+    """
+    generator = VideoNoteGenerator()
+    temp_dir = os.path.join(generator.output_dir, 'temp_audio_api')
+    os.makedirs(temp_dir, exist_ok=True)
+    try:
+        # 下载音频到本地
+        import requests
+        local_audio_path = os.path.join(temp_dir, 'audio.mp3')
+        try:
+            with requests.get(url, stream=True) as r:
+                r.raise_for_status()
+                with open(local_audio_path, 'wb') as f:
+                    for chunk in r.iter_content(chunk_size=8192):
+                        f.write(chunk)
+        except Exception as e:
+            return f"音频下载失败: {str(e)}"
+
+        # 构造 video_info
+        video_info = {
+            'title': '音频转小红书',
+            'uploader': '未知',
+            'description': '',
+            'duration': 0,
+            'platform': 'douyin'
+        }
+        # 后续处理同 generate_xhs_note_from_url
+        transcript = generator._transcribe_audio(local_audio_path)
+        if not transcript:
+            return "音频转录失败"
+        organized_content = generator._organize_long_content(transcript, int(video_info['duration']))
+        xhs_content, titles, tags, images = generator.convert_to_xiaohongshu(organized_content)
+
+        md = ""
+        if titles:
+            md += f"# {titles[0]}\n\n"
+        else:
+            md += "# 音频转小红书\n\n"
+        if images:
+            md += f"![封面图]({images[0]})\n\n"
+        content_parts = xhs_content.split('\n\n')
+        mid_point = len(content_parts) // 2
+        md += '\n\n'.join(content_parts[:mid_point]) + '\n\n'
+        if len(images) > 1:
+            md += f"![配图]({images[1]})\n\n"
+        md += '\n\n'.join(content_parts[mid_point:])
+        if len(images) > 2:
+            md += f"\n\n![配图]({images[2]})"
+        if tags:
+            md += "\n\n---\n"
+            md += "\n".join([f"#{tag}" for tag in tags])
+        return md
+    finally:
+        if os.path.exists(temp_dir):
+            shutil.rmtree(temp_dir)

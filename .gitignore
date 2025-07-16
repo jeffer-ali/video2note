@@ -35,6 +35,7 @@ ENV/
 .env
 generated_notes/
 temp/
+temp_notes/
 urls.txt
 *.mp3
 *.mp4
