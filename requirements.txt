@@ -18,3 +18,4 @@ you-get>=0.4.1650
 
 fastapi>=0.100.0
 pydantic>=2.0.0
+uvicorn
