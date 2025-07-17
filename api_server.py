@@ -8,6 +8,10 @@ generator = VideoNoteGenerator()
 class UrlRequest(BaseModel):
     url: str
 
+@app.get("/")
+def read_root():
+    return {"msg": "Hello World"}
+    
 # @app.post("/generate_xhs_note")
 # def generate_xhs_note(request: UrlRequest):
 #     try:
