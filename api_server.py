@@ -24,7 +24,27 @@ def read_root():
 @app.post("/generate_xhs_note_from_audio")
 def generate_xhs_note_from_audio(request: UrlRequest):
     try:
-        note = generator.generate_xhs_note_from_audio(request.url)
-        return {"note": note}
+        result = generator.generate_xhs_note_from_audio(request.url)
+        if isinstance(result, dict) and result.get("error"):
+            raise HTTPException(status_code=500, detail=result["error"])
+        return {
+            "note": result["note"],
+            "transcript": result["transcript"],
+            "organized_content": result["organized_content"]
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/generate_wj_note_from_audio")
+def generate_wj_note_from_audio(request: UrlRequest):
+    try:
+        result = generator.generate_wj_note_from_audio(request.url)
+        if isinstance(result, dict) and result.get("error"):
+            raise HTTPException(status_code=500, detail=result["error"])
+        return {
+            "transcript": result["transcript"],
+            "checked_content": result["checked_content"]
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+        
