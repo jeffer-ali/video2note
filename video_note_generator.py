@@ -147,7 +147,7 @@ class VideoNoteGenerator:
         print("正在加载Whisper模型...")
         self.whisper_model = None
         try:
-            self.whisper_model = whisper.load_model("medium")
+            self.whisper_model = whisper.load_model("tiny")
             print("✅ Whisper模型加载成功")
         except Exception as e:
             print(f"⚠️ Whisper模型加载失败: {str(e)}")
