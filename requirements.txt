@@ -1,7 +1,7 @@
 openai>=1.0.0
 httpx>=0.24.1
 yt-dlp>=2023.11.16
-openai-whisper>=2023.11.17
+# openai-whisper>=2023.11.17
 python-dotenv>=1.0.0
 requests>=2.31.0
 beautifulsoup4>=4.12.2
@@ -10,6 +10,8 @@ Pillow>=10.1.0
 urllib3>=2.1.0
 certifi>=2023.11.17
 ffmpeg-python>=0.2.0
+tencentcloud-sdk-python-asr==3.0.1416
+tencentcloud-sdk-python-common==3.0.1416
 
 # Optional dependencies for better performance
 torch>=2.1.0

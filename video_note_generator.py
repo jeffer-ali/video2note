@@ -18,9 +18,15 @@ from unsplash.api import Api as UnsplashApi
 from unsplash.auth import Auth as UnsplashAuth
 from dotenv import load_dotenv
 from bs4 import BeautifulSoup
-import whisper
+# import whisper
 import openai
 import argparse
+
+from tencentcloud.common import credential
+from tencentcloud.common.profile.client_profile import ClientProfile
+from tencentcloud.common.profile.http_profile import HttpProfile
+from tencentcloud.common.exception.tencent_cloud_sdk_exception import TencentCloudSDKException
+from tencentcloud.asr.v20190614 import asr_client, models
 
 # 加载环境变量
 load_dotenv()
@@ -144,14 +150,14 @@ class VideoNoteGenerator:
         self.ffmpeg_path = ffmpeg_path
         
         # 初始化whisper模型
-        print("正在加载Whisper模型...")
-        self.whisper_model = None
-        try:
-            self.whisper_model = whisper.load_model("tiny")
-            print("✅ Whisper模型加载成功")
-        except Exception as e:
-            print(f"⚠️ Whisper模型加载失败: {str(e)}")
-            print("将在需要时重试加载")
+        # print("正在加载Whisper模型...")
+        # self.whisper_model = None
+        # try:
+        #     self.whisper_model = whisper.load_model("medium")
+        #     print("✅ Whisper模型加载成功")
+        # except Exception as e:
+        #     print(f"⚠️ Whisper模型加载失败: {str(e)}")
+        #     print("将在需要时重试加载")
         
         # 日志目录
         self.log_dir = os.path.join(self.output_dir, 'logs')
@@ -168,15 +174,15 @@ class VideoNoteGenerator:
             'youtube': os.path.join(self.cookie_dir, 'youtube_cookies.txt')
         }
     
-    def _ensure_whisper_model(self) -> None:
-        """确保Whisper模型已加载"""
-        if self.whisper_model is None:
-            try:
-                print("正在加载Whisper模型...")
-                self.whisper_model = whisper.load_model("medium")
-                print("✅ Whisper模型加载成功")
-            except Exception as e:
-                print(f"⚠️ Whisper模型加载失败: {str(e)}")
+    # def _ensure_whisper_model(self) -> None:
+    #     """确保Whisper模型已加载"""
+    #     if self.whisper_model is None:
+    #         try:
+    #             print("正在加载Whisper模型...")
+    #             self.whisper_model = whisper.load_model("medium")
+    #             print("✅ Whisper模型加载成功")
+    #         except Exception as e:
+    #             print(f"⚠️ Whisper模型加载失败: {str(e)}")
 
     def _determine_platform(self, url: str) -> Optional[str]:
         """
@@ -404,21 +410,13 @@ class VideoNoteGenerator:
             return None, None
 
     def _transcribe_audio(self, audio_path: str) -> str:
-        """使用Whisper转录音频"""
-        try:
-            self._ensure_whisper_model()
-            if not self.whisper_model:
-                raise Exception("Whisper模型未加载")
-                
-            print("正在转录音频（这可能需要几分钟）...")
-            result = self.whisper_model.transcribe(
-                audio_path,
-                language='zh',  # 指定中文
-                task='transcribe',
-                best_of=5,
-                initial_prompt="以下是一段视频的转录内容。请用流畅的中文输出。"  # 添加中文提示
-            )
-            return result["text"].strip()
+        """转录音频"""
+        try:              
+            SECRET_ID = os.getenv("SECRET_ID")
+            SECRET_KEY = os.getenv("SECRET_KEY")
+
+            result = recognize_audio_from_url(audio_path, SECRET_ID, SECRET_KEY)
+            return result
             
         except Exception as e:
             print(f"⚠️ 音频转录失败: {str(e)}")
@@ -1102,7 +1100,7 @@ Markdown格式要求：
 
             # 整理长文版本
             print("\n📝 正在整理长文版本...")
-            organized_content = self._organize_long_content(transcript, video_info['duration'])
+            organized_content = self._organize_long_content(transcript, int(video_info['duration']))
             organized_file = os.path.join(self.output_dir, f"{timestamp}_organized.md")
             with open(organized_file, 'w', encoding='utf-8') as f:
                 f.write(f"# {video_info['title']} - 整理版\n\n")
@@ -1207,22 +1205,8 @@ Markdown格式要求：
         """
         输入音频url，直接返回小红书文案的markdown字符串、原文案transcript和整理文本organized_content
         """
-        temp_dir = os.path.join(self.output_dir, 'temp_audio_api')
-        os.makedirs(temp_dir, exist_ok=True)
-        timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-        rand = random.randint(1000, 9999)
-        local_audio_path = os.path.join(temp_dir, f'audio_{timestamp}_{rand}.mp3')
+        
         try:
-            # 下载音频到本地
-            try:
-                result = subprocess.run([
-                    "wget", "--no-check-certificate", url, "-O", local_audio_path
-                ], capture_output=True)
-                if result.returncode != 0:
-                    return {"error": f"音频下载失败: {result.stderr.decode()}"}
-            except Exception as e:
-                return {"error": f"音频下载失败: {str(e)}"}
-
             # 构造 video_info
             video_info = {
                 'title': '音频转小红书',
@@ -1232,7 +1216,7 @@ Markdown格式要求：
                 'platform': 'douyin'
             }
             # 后续处理同 generate_xhs_note_from_url
-            transcript = self._transcribe_audio(local_audio_path)
+            transcript = self._transcribe_audio(url)
             if not transcript:
                 return {"error": "音频转录失败"}
             organized_content = self._organize_long_content(transcript, int(video_info['duration']))
@@ -1259,40 +1243,18 @@ Markdown格式要求：
             return {"note": md, "transcript": transcript, "organized_content": organized_content}
 
         finally:
-            if os.path.exists(temp_dir):
-                shutil.rmtree(temp_dir)
+            print(f"转换完成")
 
     def generate_wj_note_from_audio(self, url: str) -> dict:
         """
         输入音频url，直接返回原文案transcript和违禁词整理文本organized_content
         """
-        temp_dir = os.path.join(self.output_dir, 'temp_audio')
-        os.makedirs(temp_dir, exist_ok=True)
-        timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-        rand = random.randint(1000, 9999)
-        local_audio_path = os.path.join(temp_dir, f'audio_{timestamp}_{rand}.mp3')
-        try:
-            # 下载音频到本地
-            try:
-                result = subprocess.run([
-                    "wget", "--no-check-certificate", url, "-O", local_audio_path
-                ], capture_output=True)
-                if result.returncode != 0:
-                    return {"error": f"音频下载失败: {result.stderr.decode()}"}
-            except Exception as e:
-                return {"error": f"音频下载失败: {str(e)}"}
+        transcript = self._transcribe_audio(url)
+        if not transcript:
+            return {"error": "音频转录失败"}
 
-            # 后续处理同 generate_xhs_note_from_url
-            transcript = self._transcribe_audio(local_audio_path)
-            if not transcript:
-                return {"error": "音频转录失败"}
-
-            checked_content = self._check_long_content(transcript)
-            return {"transcript": transcript, "checked_content": checked_content}
-
-        finally:
-            if os.path.exists(temp_dir):
-                shutil.rmtree(temp_dir)
+        checked_content = self._check_long_content(transcript)
+        return {"transcript": transcript, "checked_content": checked_content}
 
 def extract_urls_from_text(text: str) -> list:
     """
@@ -1407,28 +1369,68 @@ if __name__ == '__main__':
             print(f"⚠️ 处理URL时出错：{str(e)}")
             sys.exit(1)
 
-# def generate_xhs_note_from_url(url: str) -> str:
-#     """
-#     输入视频url，直接返回小红书文案字符串
-#     """
-#     generator = VideoNoteGenerator()
-#     # 下载并转录
-#     temp_dir = os.path.join(generator.output_dir, 'temp_api')
-#     os.makedirs(temp_dir, exist_ok=True)
-#     try:
-#         result = generator._download_video(url, temp_dir)
-#         if not result:
-#             return "视频下载失败"
-#         audio_path, video_info = result
-#         if not audio_path or not video_info:
-#             return "视频下载失败"
-#         transcript = generator._transcribe_audio(audio_path)
-#         if not transcript:
-#             return "音频转录失败"
-#         organized_content = generator._organize_long_content(transcript, int(video_info['duration']))
-#         xhs_content, titles, tags, images = generator.convert_to_xiaohongshu(organized_content)
-#         return xhs_content
-#     finally:
-#         if os.path.exists(temp_dir):
-#             shutil.rmtree(temp_dir)
+def recognize_audio_from_url(audio_url, secret_id, secret_key, region="ap-shanghai"):
+    """
+    使用腾讯云ASR的CreateRecTask API识别录音文件（通过URL方式）。
 
+    Args:
+        audio_url (str): 音频文件的公共可访问URL。
+        secret_id (str): 您的腾讯云SecretId。
+        secret_key (str): 您的腾讯云SecretKey。
+        region (str): 腾讯云服务区域，默认为“ap-shanghai”。
+    """
+    try:
+        # 实例化一个认证对象，入参需要传入腾讯云账户的 SecretId 和 SecretKey
+        cred = credential.Credential(secret_id, secret_key)
+
+        # 实例化一个http选项，可选的，没有特殊需求可以跳过
+        httpProfile = HttpProfile()
+        httpProfile.endpoint = "asr.tencentcloudapi.com" # ASR服务的域名
+
+        # 实例化一个客户端配置对象，可选的，没有特殊需求可以跳过
+        clientProfile = ClientProfile()
+        clientProfile.httpProfile = httpProfile
+
+        # 实例化要请求产品的client对象
+        client = asr_client.AsrClient(cred, region, clientProfile)
+
+        # 实例化一个请求对象，根据API文档，此对象是CreateRecTaskRequest
+        req = models.CreateRecTaskRequest()
+
+        # 设置请求参数
+        req.EngineModelType = "16k_zh_large"  # 指定引擎模型类型 [1]
+        req.SourceType = 0                    # 音频来源：0表示音频URL [2]
+        req.ChannelNum = 1                    # 声道数：1表示单声道 [2]
+        req.ResTextFormat = 2                # 返回识别结果的格式 [2]
+        req.Url = audio_url                   # 音频文件的URL [2]
+
+        print(f"正在提交录音文件识别任务，URL: {audio_url}...")
+        resp = client.CreateRecTask(req)
+        task_id = resp.Data.TaskId
+        print(f"任务提交成功，TaskId: {task_id}")
+
+        # 轮询任务状态，直到识别完成 [3]
+        print("正在等待识别结果...")
+        while True:
+            describe_req = models.DescribeTaskStatusRequest()
+            describe_req.TaskId = task_id
+            describe_resp = client.DescribeTaskStatus(describe_req)
+
+            status_str = describe_resp.Data.StatusStr
+            if status_str == "success":
+                print("\n识别完成！")
+                print("原始识别结果:")
+                print(f"\n错误信息: {describe_resp.Data}")
+                # 如果需要，可以在这里进一步处理 Result 字段，例如提取文本或生成SRT [3]
+                return describe_resp.Data.Result
+            elif status_str in ["failed", "error"]:
+                print(f"\n识别失败，状态: {status_str}, 错误信息: {describe_resp.Data.ErrorMsg}")
+                break
+            else:
+                print(f"当前任务状态: {status_str}，继续等待...")
+                time.sleep(5) # 每5秒轮询一次 [3]
+
+    except TencentCloudSDKException as err:
+        print(f"腾讯云SDK异常: {err}")
+    except Exception as e:
+        print(f"发生未知错误: {e}")
