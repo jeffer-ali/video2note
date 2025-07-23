@@ -11,7 +11,7 @@ urllib3>=2.1.0
 certifi>=2023.11.17
 ffmpeg-python>=0.2.0
 tencentcloud-sdk-python-asr==3.0.1416
-tencentcloud-sdk-python-ocr==3.0.1424
+tencentcloud-sdk-python-ocr==3.0.1416
 tencentcloud-sdk-python-common==3.0.1416
 
 # Optional dependencies for better performance
