@@ -1240,7 +1240,7 @@ Markdown格式要求：
             if tags:
                 md += "\n\n---\n"
                 md += "\n".join([f"#{tag}" for tag in tags])
-            return {"note": md, "transcript": transcript, "organized_content": organized_content}
+            return {"note": md, "transcript": transcript, "organized_content": organized_content, "xhs_content": xhs_content}
 
         finally:
             print(f"转换完成")

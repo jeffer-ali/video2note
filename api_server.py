@@ -31,6 +31,7 @@ def generate_xhs_note_from_audio(request: UrlRequest):
             raise HTTPException(status_code=500, detail=result["error"])
         return {
             "note": result["note"],
+            "xhs_content": result["xhs_content"],
             "transcript": result["transcript"],
             "organized_content": result["organized_content"]
         }
